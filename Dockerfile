@@ -1,13 +1,11 @@
-FROM golang:1.21
+FROM golang:1.21 as builder
 
+RUN apt-get update && apt-get install -y librdkafka-dev
 WORKDIR /app
-
 COPY go.mod ./
-# COPY go.sum ./
 RUN go mod download
-
 COPY . .
-
 RUN go build -o main .
+
 
 CMD ["./main"]

@@ -20,7 +20,7 @@ const (
 	dbPassword = "postgres"
 	dbName     = "testdb"
 
-	kafkaBroker = "kafka1:29092"
+	kafkaBroker = "kafka1:29092,kafka2:29093,kafka3:29094"
 )
 
 var kafkaTopic = "test-topic"
@@ -84,7 +84,10 @@ func main() {
 }
 
 func produceMessage(message string) error {
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": kafkaBroker})
+	p, err := kafka.NewProducer(&kafka.ConfigMap{
+		"bootstrap.servers": kafkaBroker,
+		"debug":             "broker",
+	})
 	if err != nil {
 		return err
 	}
@@ -118,6 +121,7 @@ func startConsumer() {
 		"bootstrap.servers": kafkaBroker,
 		"group.id":          "go-consumer-group",
 		"auto.offset.reset": "earliest",
+		"debug":             "consumer,cgrp",
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -136,18 +140,18 @@ func startConsumer() {
 
 	run := true
 	for run {
-		select {
-		case sig := <-sigchan:
-			fmt.Printf("Caught signal %v: terminating\n", sig)
-			run = false
-		default:
-			ev := c.Poll(100)
-			switch e := ev.(type) {
-			case *kafka.Message:
-				fmt.Printf("Received message: %s\n", string(e.Value))
-			case kafka.Error:
-				fmt.Fprintf(os.Stderr, "Error: %v\n", e)
+		msg, err := c.ReadMessage(10 * time.Second) // +++ Используем ReadMessage вместо Poll
+		if err != nil {
+			if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+				continue
 			}
+			log.Printf("Consumer error: %v\n", err)
+			continue
 		}
+
+		log.Printf("Received message: %s (partition %d at offset %d)\n",
+			string(msg.Value),
+			msg.TopicPartition.Partition,
+			msg.TopicPartition.Offset)
 	}
 }
